@@ -1826,6 +1826,9 @@ struct Worker {
     /// The player of an engine whose session dropped, still playing what it
     /// had fetched, for the next engine to carry on with (#268).
     kept_player: Option<KeptPlayer>,
+    /// The Soloist that plays across engines while it is the chosen
+    /// output: librespot reconnects without stopping it.
+    soloist: crate::soloist::Slot,
     network_reachable: bool,
     waiting_for_network: bool,
     engine_attempt: u64,
@@ -1927,6 +1930,7 @@ impl Worker {
             resume: None,
             resume_verify: None,
             kept_player: None,
+            soloist: crate::soloist::Slot::default(),
             network_reachable: true,
             waiting_for_network: false,
             engine_attempt: 0,
@@ -2784,6 +2788,7 @@ impl Worker {
         if let Some(engine) = self.engine.take() {
             engine.shutdown();
         }
+        crate::soloist::stop_slot(&self.soloist);
         self.stop_kept_player();
         drop(cache_writes);
         let _ = cache_writer.await;
@@ -3265,6 +3270,7 @@ impl Worker {
         if let Some(engine) = self.engine.take() {
             engine.shutdown();
         }
+        crate::soloist::stop_slot(&self.soloist);
         self.stop_kept_player();
         if let Some(cancel) = self.cancel_signin.take() {
             let _ = cancel.send(true);
@@ -3400,6 +3406,11 @@ impl Worker {
             "local playback session ended; reconnecting ({} of {RECONNECT_LIMIT} in ten minutes)",
             self.reconnects.len()
         );
+        if crate::soloist::slot_alive(&self.soloist) {
+            // Soloist plays on through librespot's reconnect: nothing for
+            // the interface to show.
+            self.engine_retry_quiet = true;
+        }
         self.take_engine_keeping_player();
         self.resume_engine();
     }
@@ -3647,6 +3658,7 @@ impl Worker {
         self.engine_proxy = proxy.clone();
         let notify = self.engine_notify();
         let kept = self.kept_player.clone();
+        let soloist = Arc::clone(&self.soloist);
         let events = self.events.clone();
         let commands = self.commands.clone();
         let waker = self.waker.clone();
@@ -3672,6 +3684,7 @@ impl Worker {
                 cache,
                 notify,
                 kept,
+                soloist,
             ))
             .await;
             let outcome = match connect_outcome {
@@ -3854,6 +3867,7 @@ impl Worker {
             if let Some(engine) = self.engine.take() {
                 engine.shutdown();
             }
+            crate::soloist::stop_slot(&self.soloist);
             self.stop_kept_player();
             self.pending_playback_grant = None;
             let credential_stored = self.playback_grant.is_some();
