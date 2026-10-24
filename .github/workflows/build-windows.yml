@@ -1,22 +1,33 @@
 name: Windows build
+
 on:
   push:
     branches: [soloist-playback]
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+  CMAKE_GENERATOR: Ninja
+
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install GLEW
+        with:
+          targets: x86_64-pc-windows-msvc
+      # Repo kendi toolchain'ini sabitliyor, hedefi onun için de ekle.
+      - run: rustup target add x86_64-pc-windows-msvc
+      - name: GLEW for libprojectM
         run: vcpkg install glew:x64-windows-static
-      - run: cargo build --release
-      - uses: actions/upload-artifact@v4
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - run: cargo build --release --target x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v7
         with:
           name: spotifast-windows
-          path: target/release/spotifast.exe
+          path: target/x86_64-pc-windows-msvc/release/spotifast.exe
+          if-no-files-found: error
