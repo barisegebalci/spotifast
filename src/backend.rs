@@ -3419,6 +3419,10 @@ impl Worker {
                     let _ = events.send(Event::AudioDeviceFound { name, id });
                     waker.wake();
                 }
+                EngineEvent::Error(message) => {
+                    let _ = events.send(Event::Error(message));
+                    waker.wake();
+                }
             }
         })
     }
